@@ -55,9 +55,9 @@ def health():
 
 ---
 
-## Fix 4 — `api/main.py`, Line 13/15: Inconsistent queue key name
+## Fix 4 — `api/main.py`, Line 13: Ambiguous queue key name
 
-**Problem:** The API pushed jobs onto a Redis list called `"job"` (singular) with `r.lpush("job", job_id)`. The worker consumed from a list called `"job"` (via `r.brpop("job", ...)`). While they happened to match, the name `"job"` is ambiguous and collides with the hash keys `job:{id}`. Renamed to `"jobs"` for clarity and to eliminate the naming conflict.
+**Problem:** The API pushed jobs onto a Redis list called `"job"` (singular) with `r.lpush("job", job_id)`. The name `"job"` conflicts with the hash keys `job:{id}` used to store job status. Renamed to `"jobs"` for clarity and to eliminate the naming ambiguity.
 
 **Change:**
 ```python
@@ -72,7 +72,7 @@ r.lpush("jobs", job_id)
 
 ## Fix 5 — `api/main.py`, Line 21: Silent 404 instead of HTTP error
 
-**Problem:** When a job ID was not found, the handler returned `{"error": "not found"}` with HTTP 200. Clients (including the integration test) cannot distinguish a successful response from an error without parsing the body.
+**Problem:** When a job ID was not found, the handler returned `{"error": "not found"}` with HTTP 200. Clients (including the integration test) cannot distinguish a successful response from a not-found error without parsing the body.
 
 **Change:**
 ```python
@@ -140,9 +140,9 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, password=REDIS_PASSWORD, ...)
 
 ## Fix 9 — `worker/worker.py`, Lines 4 & 14–18: `signal` imported but never used
 
-**Problem:** `import signal` was present at the top of the file, but no signal handlers were ever registered. This means `docker stop` (which sends `SIGTERM`) would immediately kill the worker process mid-job, corrupting any job in-flight and leaving it permanently in `queued` status.
+**Problem:** `import signal` was present at the top of the file, but no signal handlers were ever registered. This means `docker stop` (which sends `SIGTERM`) would immediately kill the worker process mid-job, corrupting any in-flight job and leaving it permanently stuck in `queued` status.
 
-**Change:** Added proper SIGTERM and SIGINT handlers:
+**Change:** Added proper SIGTERM and SIGINT handlers with a clean shutdown loop:
 ```python
 shutdown = False
 
@@ -164,7 +164,7 @@ The worker now finishes its current job and then exits cleanly.
 
 ## Fix 10 — `worker/worker.py`, Line 15: Queue name mismatch (paired with Fix 4)
 
-**Problem:** Worker consumed from `"job"` — renamed to `"jobs"` to match the API fix.
+**Problem:** Worker consumed from `"job"` — renamed to `"jobs"` to match the API.
 
 **Change:**
 ```python
@@ -177,7 +177,15 @@ job = r.brpop("jobs", timeout=5)
 
 ---
 
-## Fix 11 — `worker/requirements.txt`, Line 1: No version pin
+## Fix 11 — `worker/worker.py`, Line 53: Missing trailing newline (W292)
+
+**Problem:** The file ended without a trailing newline. This caused `flake8` to report `W292 no newline at end of file`, which would fail the lint stage of the CI pipeline.
+
+**Change:** Added a trailing newline at the end of `worker.py`.
+
+---
+
+## Fix 12 — `worker/requirements.txt`, Line 1: No version pin
 
 **Problem:** `redis` was unpinned, resulting in non-deterministic builds.
 
@@ -193,7 +201,7 @@ python-dotenv==1.0.1
 
 ---
 
-## Fix 12 — `frontend/app.js`, Line 6: Hardcoded API URL
+## Fix 13 — `frontend/app.js`, Line 6: Hardcoded API URL
 
 **Problem:** `const API_URL = "http://localhost:8000"` hardcodes the API address. When the frontend runs in a container, it cannot reach `localhost:8000`; it must use the Docker service name `api`.
 
@@ -208,7 +216,7 @@ const API_URL = process.env.API_URL || 'http://api:8000';
 
 ---
 
-## Fix 13 — `frontend/app.js`: No `/health` endpoint
+## Fix 14 — `frontend/app.js`: No `/health` endpoint
 
 **Problem:** No health route existed, so Docker's `HEALTHCHECK` for the frontend had nothing to probe.
 
@@ -221,19 +229,43 @@ app.get('/health', (req, res) => {
 
 ---
 
-## Fix 14 — `api/.env`: Real credentials committed to the repository
+## Fix 15 — `api/.env`: Real credentials committed at wrong location
 
-**Problem:** The file `api/.env` was present in the repository containing `REDIS_PASSWORD=supersecretpassword123`. Secrets must never be committed to version control — this is an immediate disqualifying violation in production.
+**Problem (credential exposure):** The file `api/.env` was tracked in version control and contained a real Redis password (`REDIS_PASSWORD=supersecretpassword123`). Secrets must never be committed to version control.
 
-**Change:**
-- Added `.env` to `.gitignore` at the repo root
-- Removed `api/.env` from tracking (`git rm --cached api/.env`)
-- Created `.env.example` with placeholder values documenting all required variables
+**Problem (wrong location):** Even if the credentials were safe, `api/.env` is the wrong place for this file. `docker compose` automatically loads variables only from a `.env` file at the **project root** (the same directory as `docker-compose.yml`). A `.env` inside `api/` is not loaded by Compose, and `api/main.py` does not call `load_dotenv()`, so the file had zero effect at runtime.
+
+**Changes:**
+- Added `.env` (and `*.env`) to `.gitignore` at the repo root to prevent re-committing
+- Removed `api/.env` from git tracking: `git rm --cached api/.env`
+- Deleted the `api/.env` file from disk entirely
+- Created `.env` at the **project root** (from `.env.example`) — this is where Docker Compose reads it
+- Created `.env.example` at the project root with placeholder values documenting all required variables
 
 ---
 
-## Fix 15 — `frontend/package.json`: No `package-lock.json`
+## Fix 16 — `frontend/package.json`: No `package-lock.json`
 
-**Problem:** Without a lockfile, `npm install` resolves dependency trees at build time, producing non-reproducible images and potential version drift.
+**Problem:** Without a lockfile, `npm install` resolves dependency trees at build time, producing non-reproducible images and potential version drift. The frontend `Dockerfile` uses `npm ci`, which requires a `package-lock.json` — without one, the Docker build would fail.
 
-**Change:** Added `package-lock.json` generated by running `npm install` once locally. Dockerfiles use `npm ci` (instead of `npm install`) to enforce the lockfile.
+**Change:** Generated `package-lock.json` by running `npm install` once locally and committed it. The Dockerfile now uses `npm ci --omit=dev` to enforce the lockfile on every build.
+
+---
+
+## Fix 17 — `api/tests/test_main.py`: Incorrect mock strategy for Redis
+
+**Problem:** The original test file patched `redis.Redis` (the class constructor) using `patch("redis.Redis")`. However, `main.py` creates the Redis client `r` at **module import time** as a module-level variable. By the time the patch was applied, `r` had already been assigned the real client object. As a result, endpoint functions called the real (unpatched) `r`, causing 5 of 7 tests to fail.
+
+**Change:** Changed the mock strategy to patch `main.r` directly — replacing the already-created module-level instance with a `MagicMock`:
+```python
+# Before (did not intercept calls to the already-created r)
+with patch("redis.Redis") as mock_cls:
+    mock_instance = MagicMock()
+    mock_cls.return_value = mock_instance
+
+# After (replaces the live instance on the module itself)
+mock = MagicMock()
+with patch.object(main, "r", mock):
+    yield mock
+```
+All 7 tests now pass with 100% code coverage.
