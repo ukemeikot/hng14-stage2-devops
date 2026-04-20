@@ -1,0 +1,17 @@
+# Force LF line endings for all text files in the repo
+# This prevents Windows from converting \n to \r\n and breaking
+# tools like flake8 (W292) on Linux CI runners
+
+* text=auto eol=lf
+
+# Explicit overrides
+*.py    text eol=lf
+*.js    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.json  text eol=lf
+*.sh    text eol=lf
+Dockerfile* text eol=lf
+.env*   text eol=lf
