@@ -269,3 +269,28 @@ with patch.object(main, "r", mock):
     yield mock
 ```
 All 7 tests now pass with 100% code coverage.
+
+---
+
+## Fix 18 — `worker/Dockerfile` & `docker-compose.yml`: Worker healthcheck timing out
+
+**Problem:** The worker HEALTHCHECK command (`python -c "import redis; r=redis.Redis(...); r.ping()"`) was given only 5 seconds to complete. On the first run, Python must initialise the interpreter, import the redis module, and open a TCP connection — this consistently exceeded the 5s timeout, causing `ExitCode: -1` and `Health check exceeded timeout (5s)`. The `start_period` of 15s was also too short for images that need to be pulled from scratch.
+
+**Change:**
+
+In `worker/Dockerfile`:
+```dockerfile
+# Before
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "...redis.Redis(...); r.ping()"
+
+# After
+HEALTHCHECK --interval=15s --timeout=10s --start-period=20s --retries=3 \
+    CMD python -c "...redis.Redis(..., socket_connect_timeout=3, socket_timeout=3); r.ping()"
+```
+
+In `docker-compose.yml` (api and worker healthchecks):
+- Timeout increased from `5s` → `10s`
+- `start_period` increased from `15s` → `30s`
+- Added `socket_connect_timeout=3, socket_timeout=3` to the Redis call so the health check fails fast and predictably within the timeout window instead of hanging
+

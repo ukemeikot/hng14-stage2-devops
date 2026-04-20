@@ -15,6 +15,11 @@ RUN python -m venv /venv \
 # ── Stage 2: runtime image ────────────────────────────────────────────────────
 FROM python:3.12-slim AS runtime
 
+# Install redis-cli for the HEALTHCHECK (tiny, no server components)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    redis-tools \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create non-root user
 RUN groupadd --gid 1001 appgroup \
     && useradd --uid 1001 --gid appgroup --shell /bin/sh --create-home appuser
@@ -28,9 +33,8 @@ ENV PATH="/venv/bin:$PATH"
 
 USER appuser
 
-HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c \
-    "import os, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379')), password=os.getenv('REDIS_PASSWORD')); r.ping()" \
-    || exit 1
+# Use redis-cli ping — much faster than spawning a full Python interpreter
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
+    CMD redis-cli -h ${REDIS_HOST:-redis} -p ${REDIS_PORT:-6379} -a ${REDIS_PASSWORD} ping | grep -q PONG || exit 1
 
 CMD ["python", "worker.py"]
