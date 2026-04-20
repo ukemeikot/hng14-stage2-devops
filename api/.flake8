@@ -1,0 +1,12 @@
+[flake8]
+max-line-length = 100
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    build,
+    dist
+per-file-ignores =
+    # Allow long lines in test files
+    tests/*: E501
