@@ -1,0 +1,24 @@
+# .trivyignore — Trivy vulnerability exceptions
+#
+# This file lists CVEs that are accepted risks for this project.
+# Each entry is documented with the reason for acceptance.
+#
+# Policy: Only CVEs in OS base packages that cannot be remediated
+# at the application layer are listed here. All Python/Node package
+# CVEs must be fixed by upgrading dependencies, not listed here.
+#
+# OS base-image CVEs (python:3.12-slim / node:20-alpine):
+# These come from the upstream base images (Debian 13 / Alpine).
+# We cannot patch them at the application layer — we must wait for
+# the base image maintainers to release a fix, then rebuild.
+# We run `ignore-unfixed: true` in Trivy to suppress truly unfixed ones.
+# Any that are listed below have been reviewed and accepted as low-risk
+# in the context of this application (no direct exposure, mitigated by
+# network isolation, non-root container user, and named Docker network).
+#
+# To identify new CVEs: download the SARIF artifact from the CI run
+# and review trivy-api.sarif / trivy-worker.sarif / trivy-frontend.sarif
+
+# Debian 13 (Bookworm/Trixie) stdlib CVEs — no fix available upstream
+# Add specific CVE IDs here after reviewing the SARIF artifact, e.g.:
+# CVE-XXXX-XXXXX
