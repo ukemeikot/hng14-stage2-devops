@@ -1,27 +1,32 @@
 """
 Unit tests for api/main.py
 
-Redis is fully mocked — no real Redis required.
+Strategy: patch `main.r` (the module-level Redis instance) directly.
+This works regardless of when the instance is created, because we
+replace the object that the endpoint functions actually call into.
+No real Redis connection is needed.
 """
 import pytest
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
+import main  # import first so the module exists
 
 
-# ── Patch redis.Redis before importing the app ────────────────────────────────
+# ── Shared fixture: replace the live Redis client on the module ────────────────
 @pytest.fixture(autouse=True)
 def mock_redis():
-    """Replace redis.Redis with a MagicMock for every test."""
-    with patch("redis.Redis") as mock_cls:
-        mock_instance = MagicMock()
-        mock_cls.return_value = mock_instance
-        yield mock_instance
+    """
+    Patch main.r with a MagicMock for the duration of every test.
+    `autouse=True` means this runs automatically for every test in this file.
+    """
+    mock = MagicMock()
+    with patch.object(main, "r", mock):
+        yield mock
 
 
 @pytest.fixture()
-def client(mock_redis):
-    from main import app  # import after Redis is mocked
-    return TestClient(app)
+def client():
+    return TestClient(main.app)
 
 
 # ── Test 1: Health endpoint returns 200 when Redis is reachable ───────────────
@@ -46,10 +51,10 @@ def test_create_job(client, mock_redis):
     assert response.status_code == 200
     data = response.json()
     assert "job_id" in data
-    # Verify Redis calls were made
+    # Verify the correct Redis calls were made
     mock_redis.lpush.assert_called_once()
     mock_redis.hset.assert_called_once()
-    # The queue name must be "jobs"
+    # The queue key must be "jobs" (not "job")
     args, _ = mock_redis.lpush.call_args
     assert args[0] == "jobs"
 
@@ -78,7 +83,7 @@ def test_create_job_returns_uuid(client, mock_redis):
     response = client.post("/jobs")
     assert response.status_code == 200
     job_id = response.json()["job_id"]
-    # This will raise ValueError if not a valid UUID
+    # Will raise ValueError if not a valid UUID
     uuid.UUID(job_id)
 
 
