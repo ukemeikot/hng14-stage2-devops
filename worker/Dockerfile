@@ -3,6 +3,7 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
@@ -16,6 +17,7 @@ RUN python -m venv /venv \
 FROM python:3.12-slim AS runtime
 
 # Install redis-cli for the HEALTHCHECK (tiny, no server components)
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
     redis-tools \
     && rm -rf /var/lib/apt/lists/*
@@ -34,7 +36,8 @@ ENV PATH="/venv/bin:$PATH"
 USER appuser
 
 # Use redis-cli ping — much faster than spawning a full Python interpreter
+# DL3025: env vars in HEALTHCHECK CMD are intentional (run-time config)
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
-    CMD redis-cli -h ${REDIS_HOST:-redis} -p ${REDIS_PORT:-6379} -a ${REDIS_PASSWORD} ping | grep -q PONG || exit 1
+    CMD redis-cli -h "${REDIS_HOST:-redis}" -p "${REDIS_PORT:-6379}" -a "$REDIS_PASSWORD" ping | grep -q PONG || exit 1
 
 CMD ["python", "worker.py"]
