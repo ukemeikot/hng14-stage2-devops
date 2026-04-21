@@ -1,5 +1,8 @@
-fastapi==0.115.12
+fastapi==0.136.0
 uvicorn[standard]==0.34.2
 redis==5.0.4
 python-dotenv==1.0.1
 httpx==0.28.1
+# Explicitly pin starlette to latest to patch CVE-2025-54121 and CVE-2025-62727
+# fastapi>=0.116.0 allows starlette>=0.46.0; starlette 1.0.0 is the patched version
+starlette==1.0.0
