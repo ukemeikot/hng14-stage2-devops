@@ -177,7 +177,7 @@ jobs:
           docker save -o frontend-image.tar hng-stage2-frontend-scan:${{ github.sha }}
 
       - name: Generate API SARIF
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           scan-type: image
           input: api-image.tar
@@ -191,7 +191,7 @@ jobs:
           trivyignores: .trivyignore
 
       - name: Generate Worker SARIF
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           scan-type: image
           input: worker-image.tar
@@ -205,7 +205,7 @@ jobs:
           trivyignores: .trivyignore
 
       - name: Generate Frontend SARIF
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           scan-type: image
           input: frontend-image.tar
@@ -219,7 +219,7 @@ jobs:
           trivyignores: .trivyignore
 
       - name: Enforce API scan gate
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           scan-type: image
           input: api-image.tar
@@ -233,7 +233,7 @@ jobs:
           trivyignores: .trivyignore
 
       - name: Enforce Worker scan gate
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           scan-type: image
           input: worker-image.tar
@@ -247,7 +247,7 @@ jobs:
           trivyignores: .trivyignore
 
       - name: Enforce Frontend scan gate
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           scan-type: image
           input: frontend-image.tar
