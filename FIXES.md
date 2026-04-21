@@ -319,3 +319,20 @@ httpx==0.28.1
 ```
 
 All 7 unit tests verified passing with the updated versions.
+
+---
+
+## Fix 20 — `.github/workflows/ci.yml`, Stage `security-scan`: Trivy scans were brittle and hard to debug
+
+**Problem:** The security-scan job rebuilt images with `localhost:5000/...` tags and scanned them by image reference in a fresh GitHub Actions runner. That is brittle because the job-local registry is empty unless those rebuilt images are explicitly pushed into it, and a failing first scan also prevented useful diagnostic output for the remaining images. The workflow also tracked Trivy on `@master`, which is not reproducible.
+
+**Changes:**
+- Pinned the action version from `aquasecurity/trivy-action@master` to `aquasecurity/trivy-action@0.28.0`
+- Reworked the security-scan job to export each rebuilt image as a tarball (`docker save`) and scan the tarballs directly with Trivy
+- Split the scan into two passes:
+  - SARIF generation with `exit-code: "0"` so reports are always produced
+  - Enforcement pass with `format: table` and `exit-code: "1"` so the pipeline still fails on CRITICAL findings
+- Uploaded both the SARIF files and the human-readable `.txt` scan outputs as artifacts
+- Added explicit Trivy DB mirror environment variables for more reliable database downloads in CI
+
+This keeps the stage compliant with the task requirement to fail on CRITICAL findings while making failures actionable instead of opaque.

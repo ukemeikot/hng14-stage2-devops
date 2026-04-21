@@ -158,41 +158,73 @@ jobs:
     name: Security Scan (Trivy)
     runs-on: ubuntu-latest
     needs: build
-    services:
-      registry:
-        image: registry:2
-        ports:
-          - 5000:5000
+    env:
+      TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db
+      TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db
 
     steps:
       - uses: actions/checkout@v4
 
-      # Re-build images so they are available in this job's Docker daemon
+      # Re-build images in this job, then export them as tarballs for Trivy.
+      # This avoids registry/image-ref ambiguity in a fresh runner.
       - name: Build images for scanning
         run: |
-          docker build -t ${{ env.API_IMAGE }}:${{ github.sha }} ./api
-          docker build -t ${{ env.WORKER_IMAGE }}:${{ github.sha }} ./worker
-          docker build -t ${{ env.FRONTEND_IMAGE }}:${{ github.sha }} ./frontend
+          docker build -t hng-stage2-api-scan:${{ github.sha }} ./api
+          docker build -t hng-stage2-worker-scan:${{ github.sha }} ./worker
+          docker build -t hng-stage2-frontend-scan:${{ github.sha }} ./frontend
+          docker save -o api-image.tar hng-stage2-api-scan:${{ github.sha }}
+          docker save -o worker-image.tar hng-stage2-worker-scan:${{ github.sha }}
+          docker save -o frontend-image.tar hng-stage2-frontend-scan:${{ github.sha }}
 
-      - name: Scan API image
-        uses: aquasecurity/trivy-action@master
+      - name: Generate API SARIF
+        uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: ${{ env.API_IMAGE }}:${{ github.sha }}
+          scan-type: image
+          input: api-image.tar
           format: sarif
           output: trivy-api.sarif
-          exit-code: "1"
+          exit-code: "0"
           severity: CRITICAL
           ignore-unfixed: true
           vuln-type: library
           scanners: vuln
           trivyignores: .trivyignore
 
-      - name: Scan Worker image
-        uses: aquasecurity/trivy-action@master
+      - name: Generate Worker SARIF
+        uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: ${{ env.WORKER_IMAGE }}:${{ github.sha }}
+          scan-type: image
+          input: worker-image.tar
           format: sarif
           output: trivy-worker.sarif
+          exit-code: "0"
+          severity: CRITICAL
+          ignore-unfixed: true
+          vuln-type: library
+          scanners: vuln
+          trivyignores: .trivyignore
+
+      - name: Generate Frontend SARIF
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          input: frontend-image.tar
+          format: sarif
+          output: trivy-frontend.sarif
+          exit-code: "0"
+          severity: CRITICAL
+          ignore-unfixed: true
+          vuln-type: library
+          scanners: vuln
+          trivyignores: .trivyignore
+
+      - name: Enforce API scan gate
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          input: api-image.tar
+          format: table
+          output: trivy-api.txt
           exit-code: "1"
           severity: CRITICAL
           ignore-unfixed: true
@@ -200,12 +232,27 @@ jobs:
           scanners: vuln
           trivyignores: .trivyignore
 
-      - name: Scan Frontend image
-        uses: aquasecurity/trivy-action@master
+      - name: Enforce Worker scan gate
+        uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
-          format: sarif
-          output: trivy-frontend.sarif
+          scan-type: image
+          input: worker-image.tar
+          format: table
+          output: trivy-worker.txt
+          exit-code: "1"
+          severity: CRITICAL
+          ignore-unfixed: true
+          vuln-type: library
+          scanners: vuln
+          trivyignores: .trivyignore
+
+      - name: Enforce Frontend scan gate
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          input: frontend-image.tar
+          format: table
+          output: trivy-frontend.txt
           exit-code: "1"
           severity: CRITICAL
           ignore-unfixed: true
@@ -222,6 +269,9 @@ jobs:
             trivy-api.sarif
             trivy-worker.sarif
             trivy-frontend.sarif
+            trivy-api.txt
+            trivy-worker.txt
+            trivy-frontend.txt
 
   # ────────────────────────────────────────────────────────────────────────────
   # STAGE 5 — INTEGRATION TEST
