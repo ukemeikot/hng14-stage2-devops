@@ -294,3 +294,28 @@ In `docker-compose.yml` (api and worker healthchecks):
 - `start_period` increased from `15s` → `30s`
 - Added `socket_connect_timeout=3, socket_timeout=3` to the Redis call so the health check fails fast and predictably within the timeout window instead of hanging
 
+---
+
+## Fix 19 — `api/requirements.txt`: CRITICAL CVE in `h11` transitive dependency (CVE-2025-43859)
+
+**Problem:** Trivy security scan (`vuln-type: library`) detected **CVE-2025-43859** (CRITICAL) — an HTTP request smuggling vulnerability in `h11 < 0.16.0`. The `h11` package is a transitive dependency pulled in by `uvicorn[standard]`. The pinned version `uvicorn==0.29.0` resolved to `h11==0.14.x`, which is vulnerable.
+
+**CVE details:**
+- **CVE-2025-43859** — HTTP/1.1 request smuggling via malformed `Content-Length` headers in `h11`
+- Severity: **CRITICAL**
+- Fixed in: `h11 >= 0.16.0`
+
+**Change:**
+```
+# Before
+fastapi==0.111.0
+uvicorn[standard]==0.29.0   # pulls in h11==0.14.x (VULNERABLE)
+httpx==0.27.0
+
+# After
+fastapi==0.115.12
+uvicorn[standard]==0.34.2   # pulls in h11>=0.16.0 (PATCHED)
+httpx==0.28.1
+```
+
+All 7 unit tests verified passing with the updated versions.
