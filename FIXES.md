@@ -336,3 +336,37 @@ All 7 unit tests verified passing with the updated versions.
 - Added explicit Trivy DB mirror environment variables for more reliable database downloads in CI
 
 This keeps the stage compliant with the task requirement to fail on CRITICAL findings while making failures actionable instead of opaque.
+
+---
+
+## Fix 21 — `.github/workflows/ci.yml`, Stage `deploy`: SSH setup failed opaquely when EC2 secrets were missing
+
+**Problem:** The deploy job called `ssh-keyscan -H ${{ secrets.EC2_HOST }}` directly. When `EC2_HOST` was unset, empty, or unavailable because of environment scoping, `ssh-keyscan` received no host argument and failed with its generic usage text. That made the deploy failure look like an SSH syntax issue instead of a missing secret. The step also wrote the SSH key with `echo`, which is less robust for multiline secret content.
+
+**Changes:**
+- Passed `EC2_HOST` and `EC2_SSH_KEY` into the step via `env`
+- Added explicit validation for `EC2_HOST`, `EC2_SSH_KEY`, and later `EC2_USER`
+- Switched key writing from `echo` to `printf '%s\n'`
+- Quoted the host passed to `ssh-keyscan`
+- Changed the SSH command to use the validated shell variables (`"$EC2_USER@$EC2_HOST"`)
+
+This makes deploy failures self-explanatory and prevents false leads during debugging.
+
+---
+
+## Fix 22 — `.github/workflows/ci.yml`, Stage `deploy`: `REDIS_PASSWORD` was not reaching the remote EC2 shell
+
+**Problem:** The deploy job connected to EC2 using a single-quoted heredoc:
+
+```bash
+ssh ... << 'ENDSSH'
+```
+
+That quoting prevents local shell expansion before the script is sent. Inside the remote shell, `${REDIS_PASSWORD}` was therefore empty because GitHub Actions step environment variables are not automatically forwarded over SSH. The generated `.env` file on EC2 ended up with `REDIS_PASSWORD=` blank, causing new API containers to fail their Redis-backed `/health` check during rolling deploy.
+
+**Changes:**
+- Added an explicit guard to fail fast if `REDIS_PASSWORD` is missing in the workflow
+- Base64-encoded `REDIS_PASSWORD` on the runner and passed it into the remote shell via the SSH command line
+- Decoded the value on EC2 before writing `.env`
+
+This ensures the deployment uses the intended Redis password and prevents false health-check failures during rollout.
