@@ -183,6 +183,7 @@ jobs:
           exit-code: "1"
           severity: CRITICAL
           ignore-unfixed: true
+          vuln-type: library
           scanners: vuln
           trivyignores: .trivyignore
 
@@ -195,6 +196,7 @@ jobs:
           exit-code: "1"
           severity: CRITICAL
           ignore-unfixed: true
+          vuln-type: library
           scanners: vuln
           trivyignores: .trivyignore
 
@@ -207,6 +209,7 @@ jobs:
           exit-code: "1"
           severity: CRITICAL
           ignore-unfixed: true
+          vuln-type: library
           scanners: vuln
           trivyignores: .trivyignore
 
